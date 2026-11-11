@@ -1,0 +1,113 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: clinic_n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
+      - GENERIC_TIMEZONE=${TIMEZONE:-America/Sao_Paulo}
+      - TZ=${TIMEZONE:-America/Sao_Paulo}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - clinic-network
+
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: clinic_evolution_api
+    restart: unless-stopped
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+    environment:
+      - SERVER_URL=${EVOLUTION_SERVER_URL:-http://localhost:8080}
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-evolution}:${POSTGRES_PASSWORD:-evolution_pass}@postgres:5432/${POSTGRES_DB:-evolution}?schema=public
+      - DATABASE_CONNECTION_CLIENT_NAME=${DATABASE_CONNECTION_CLIENT_NAME:-evolution_exchange}
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/6
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
+      - STORE_MESSAGES=${STORE_MESSAGES:-true}
+      - STORE_MESSAGE_UP=${STORE_MESSAGE_UP:-true}
+      - STORE_CONTACTS=${STORE_CONTACTS:-true}
+      - STORE_CHATS=${STORE_CHATS:-true}
+      - WEBHOOK_GLOBAL_ENABLED=${WEBHOOK_GLOBAL_ENABLED:-false}
+      - WEBHOOK_GLOBAL_URL=${WEBHOOK_GLOBAL_URL:-http://n8n:5678/webhook/evolution}
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=true
+      - LOG_LEVEL=ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS
+      - LOG_COLOR=true
+      - LOG_BAILEYS=error
+      - CONFIG_SESSION_PHONE_CLIENT=ClinicWhatsAppAgent
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - clinic-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: clinic_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-evolution}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evolution_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-evolution}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - clinic-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: clinic_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - clinic-network
+
+volumes:
+  n8n_data:
+    name: clinic_n8n_data
+  evolution_instances:
+    name: clinic_evolution_instances
+  postgres_data:
+    name: clinic_postgres_data
+  redis_data:
+    name: clinic_redis_data
+
+networks:
+  clinic-network:
+    name: clinic_network
+    driver: bridge

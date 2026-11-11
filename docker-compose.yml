@@ -20,7 +20,7 @@ services:
       - clinic-network
 
   evolution-api:
-    image: atendai/evolution-api:v2.2.2
+    image: evoapicloud/evolution-api:v2.3.7
     container_name: clinic_evolution_api
     restart: unless-stopped
     ports:
@@ -29,9 +29,20 @@ services:
       - SERVER_URL=${EVOLUTION_SERVER_URL:-http://localhost:8080}
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
-      - DATABASE_ENABLED=${DATABASE_ENABLED:-false}
-      - DATABASE_CONNECTION_URI=${DATABASE_CONNECTION_URI:-}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-evolution}:${POSTGRES_PASSWORD:-evolution_pass}@postgres:5432/${POSTGRES_DB:-evolution}?schema=public
       - DATABASE_CONNECTION_CLIENT_NAME=${DATABASE_CONNECTION_CLIENT_NAME:-evolution_exchange}
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/6
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
       - STORE_MESSAGES=${STORE_MESSAGES:-true}
       - STORE_MESSAGE_UP=${STORE_MESSAGE_UP:-true}
       - STORE_CONTACTS=${STORE_CONTACTS:-true}
@@ -45,6 +56,44 @@ services:
       - CONFIG_SESSION_PHONE_CLIENT=ClinicWhatsAppAgent
     volumes:
       - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - clinic-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: clinic_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-evolution}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evolution_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-evolution}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - clinic-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: clinic_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - clinic-network
 
@@ -53,6 +102,10 @@ volumes:
     name: clinic_n8n_data
   evolution_instances:
     name: clinic_evolution_instances
+  postgres_data:
+    name: clinic_postgres_data
+  redis_data:
+    name: clinic_redis_data
 
 networks:
   clinic-network:

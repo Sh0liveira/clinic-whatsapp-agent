@@ -1,3 +1,7 @@
+# Generated QR Codes
+qrcode.png
+*.png
+
 # Logs
 logs
 *.log
